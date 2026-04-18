@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ShitalGenAI — Advanced AI Coding Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"/>
+<link rel="stylesheet" href="video.css"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════
+     LOGIN SCREEN
+════════════════════════════════════ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo-wrap">
+      <img src="logo.png" alt="ShitalGenAI" class="login-logo" onerror="this.style.display='none'"/>
+    </div>
+    <h1 class="login-title">ShitalGenAI</h1>
+    <p class="login-sub">Advanced AI coding assistant.<br/>Enter your email to get started.</p>
+    <div class="login-field">
+      <input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email" autofocus/>
+      <div class="login-error" id="loginEmailError"></div>
+    </div>
+    <button class="login-btn" onclick="submitEmailLogin()">Continue →</button>
+    <div class="login-divider"><span>or</span></div>
+    <button class="admin-screen-btn" onclick="showAdminLoginFromScreen()">👑 Admin Login</button>
+    <p class="login-note">4,000 free tokens per day · No password needed</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     APP SCREEN
+════════════════════════════════════ -->
+<div id="appScreen" class="layout" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <div class="brand-icon"><img src="logo.png" alt="ShitalGenAI"/></div>
+        <span>ShitalGenAI</span>
+      </div>
+      <button class="new-btn" id="newChatBtn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New session
+      </button>
+    </div>
+
+    <!-- ★ BOT SELECTOR ★ -->
+    <div class="sidebar-section bot-selector-section">
+      <div class="section-label">Select Bot</div>
+      <select id="botSelect" class="styled-select bot-select">
+        <option value="coding">💻 Coding Assistant</option>
+        <option value="image">📷 Image Vision Bot</option>
+      </select>
+      <div class="bot-desc" id="botDesc">Generate, debug, refactor &amp; explain code</div>
+    </div>
+
+    <!-- Language — hidden in image mode -->
+    <div class="sidebar-section" id="langSection">
+      <div class="section-label">Language</div>
+      <select id="langSelect" class="styled-select">
+        <option value="auto">Auto-detect</option>
+        <option value="Python">Python</option>
+        <option value="JavaScript">JavaScript</option>
+        <option value="TypeScript">TypeScript</option>
+        <option value="Java">Java</option>
+        <option value="C++">C++</option>
+        <option value="C#">C#</option>
+        <option value="Go">Go</option>
+        <option value="Rust">Rust</option>
+        <option value="PHP">PHP</option>
+        <option value="Swift">Swift</option>
+        <option value="Kotlin">Kotlin</option>
+        <option value="Ruby">Ruby</option>
+        <option value="SQL">SQL</option>
+        <option value="Bash">Bash/Shell</option>
+        <option value="HTML/CSS">HTML/CSS</option>
+        <option value="React">React/JSX</option>
+        <option value="Vue">Vue.js</option>
+        <option value="Dart">Dart/Flutter</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-label">Memory</div>
+      <div class="memory-info">
+        <div class="mem-stat"><span class="mem-num" id="memCount">0</span><span class="mem-label">code blocks remembered</span></div>
+        <div class="mem-stat"><span class="mem-num" id="msgCount">0</span><span class="mem-label">messages in context</span></div>
+      </div>
+      <button class="clear-mem-btn" id="clearMemBtn">Clear memory</button>
+    </div>
+
+    <!-- SESSION HISTORY — starts open, collapsible, last 10 -->
+    <div class="sidebar-section history-section">
+      <div class="section-label" id="historyToggle"
+           style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;">
+        Session history
+        <svg id="historyChevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2"
+             style="transition:transform 0.2s;transform:rotate(180deg);flex-shrink:0;">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <!-- No display:none — starts visible -->
+      <div class="history-list" id="historyList">
+        <div class="history-empty">No sessions yet</div>
+      </div>
+    </div>
+
+    <!-- ACCESS PANEL -->
+    <div class="access-panel">
+      <div class="section-label">Access</div>
+      <div id="userInfoBar"></div>
+      <div id="tokenBadge" class="token-badge-wrap"></div>
+      <button id="adminLoginBtn" class="admin-login-btn">👑 Admin Login</button>
+      <button id="adminLogoutBtn" class="admin-logout-btn" style="display:none;">🚪 Logout Admin</button>
+      <button id="signOutBtn" class="sign-out-btn" style="display:none;" onclick="signOut()">Sign out</button>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="section-label">Model</div>
+      <select id="modelSelect" class="styled-select"></select>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <button class="toggle-btn" id="toggleSidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="topbar-center">
+        <span id="sessionTitle">New Coding Session</span>
+        <span class="lang-badge" id="langBadge">Auto</span>
+      </div>
+      <div class="topbar-right">
+        <!-- Coding modes -->
+        <div class="topbar-modes" id="codingModes">
+          <button class="mode-btn active" data-mode="generate">Generate</button>
+          <button class="mode-btn" data-mode="debug">Debug</button>
+          <button class="mode-btn" data-mode="refactor">Refactor</button>
+          <button class="mode-btn" data-mode="explain">Explain</button>
+          <button class="mode-btn" data-mode="optimize">Optimize</button>
+          <button class="mode-btn" data-mode="test">Tests</button>
+        </div>
+        <!-- Image sub-modes -->
+        <div class="topbar-modes" id="imageModes" style="display:none">
+          <button class="img-subtab active" data-sub="analyze">🔍 Analyze</button>
+          <button class="img-subtab" data-sub="ocr">📝 Extract Text</button>
+          <button class="img-subtab" data-sub="debug">🐛 Debug Code</button>
+          <button class="img-subtab" data-sub="question">💬 Ask</button>
+        </div>
+        <button class="tb-btn" id="exportBtn" title="Export session">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- MESSAGES -->
+    <div class="messages" id="messages"></div>
+
+    <!-- INPUT AREA -->
+    <div class="input-section">
+      <div class="code-paste-area" id="codePasteArea" style="display:none">
+        <div class="paste-header">
+          <span>Paste your code here (for debug/refactor/explain)</span>
+          <button id="closePaste">✕</button>
+        </div>
+        <textarea id="codeInput" placeholder="Paste existing code here..."></textarea>
+      </div>
+
+      <div class="input-bar">
+        <button class="attach-btn" id="attachCode" title="Attach code">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </button>
+        <textarea id="userMsg" placeholder="Describe what you want to build, fix, or improve..." rows="1"></textarea>
+        <button class="send-btn" id="sendBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+        </button>
+      </div>
+      <div class="input-footer">
+        <span id="modeLabel">Mode: <b>Generate</b></span>
+        <span>Enter to send · Shift+Enter for new line</span>
+      </div>
+    </div>
+  </main>
+
+</div><!-- /#appScreen -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="imageapp.js"></script>
+<script src="videoapp.js"></script>
+<script src="fileattach.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
