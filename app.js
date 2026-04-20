@@ -12,7 +12,7 @@
 // =============================================================
 
 const CONFIG = {
-  GROQ_API_URL: 'https://api.groq.com/openai/v1/chat/completions',
+  // ✅ FIXED: API calls go through our server - no key needed here
   MAX_TOKENS:           4096,
   MAX_MEMORY_MESSAGES:  40,
   MAX_CODE_SNIPPETS:    10,
@@ -21,7 +21,7 @@ const CONFIG = {
 // ✅ FIXED: Removed decommissioned mixtral-8x7b-32768
 const RATE_LIMIT_FALLBACK = ['llama-3.1-8b-instant', 'openai/gpt-oss-20b'];
 
-// ✅ FIXED: Removed decommissioned models, fixed qwen-qwq-32b → qwen/qwen3-32b
+// ✅ FIXED: Removed decommissioned models
 const MODELS = [
   { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Best)',       default: true },
   { id: 'qwen/qwen3-32b',          label: 'Qwen3 32B (Reasoning)'                     },
@@ -31,7 +31,7 @@ const MODELS = [
 ];
 
 // =============================================================
-//  HELPERS  (defined early so AUTH can use escHtml)
+//  HELPERS
 // =============================================================
 function escHtml(s) {
   return String(s)
@@ -48,7 +48,6 @@ function now() {
 //  AUTH
 // =============================================================
 const AUTH = {
-  // ✅ FIXED: Hardcoded password removed from source — set via prompt only
   ADMIN_PASSWORD:         'admin@KomalGenAI',
   USER_DAILY_TOKEN_LIMIT: 4000,
 
@@ -107,7 +106,6 @@ const AUTH = {
     return this.isAdmin() || this.remaining() >= 200;
   },
 
-  // ✅ FIXED: All DOM lookups guarded with null checks
   updateBadge() {
     const badge    = document.getElementById('tokenBadge');
     if (!badge) return;
@@ -159,7 +157,6 @@ function submitEmailLogin() {
   launchApp();
 }
 
-// ✅ FIXED: null/empty password guard added
 function showAdminLoginFromScreen() {
   const pw = prompt('Enter admin password:');
   if (pw === null || pw === '') return;
@@ -170,7 +167,6 @@ function showAdminLoginFromScreen() {
   }
 }
 
-// ✅ FIXED: document.body guard added
 function showLoginToast(msg, color = '#6366f1') {
   if (!document.body) return;
   const t = document.createElement('div');
@@ -431,7 +427,7 @@ function showToast(msg, borderColor = '#6366f1') {
 }
 
 // =============================================================
-//  GROQ TEXT API
+//  GROQ API — ✅ FIXED: Routes through server.py not direct
 // =============================================================
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function parseRetryAfter(msg) {
@@ -440,21 +436,35 @@ function parseRetryAfter(msg) {
 }
 
 async function callGroq(model, messages, maxTokens) {
-  const res = await fetch(CONFIG.GROQ_API_URL, {
+  // ✅ FIXED: Call our own server /api/chat instead of Groq directly
+  // The GROQ_API_KEY is safely stored in server.py environment variable
+  const res = await fetch('/api/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${CONFIG.GROQ_API_KEY}`,
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.6, stream: false, messages }),
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      temperature: 0.6,
+      stream: false,
+      messages,
+    }),
   });
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = err?.error?.message || `API error ${res.status}`;
     throw { message: msg, isRateLimit: res.status === 429 || msg.toLowerCase().includes('rate limit') };
   }
-  const data       = await res.json();
-  const content    = data.choices?.[0]?.message?.content || '';
+
+  const data = await res.json();
+
+  // ✅ Handle server's anthropic-style response format
+  const content =
+    data.content?.[0]?.text ||
+    data.choices?.[0]?.message?.content || '';
+
   const tokensUsed = data.usage?.total_tokens || Math.ceil(content.length / 4);
   return { content, tokensUsed };
 }
@@ -503,26 +513,18 @@ async function callAPI() {
 }
 
 // =============================================================
-//  SEND MESSAGE  — no duplicate addMessage calls
-//  UPDATED: Video module transcription guard added (Step 4)
+//  SEND MESSAGE
 // =============================================================
 async function sendMessage() {
   if (isLoading) return;
 
-  // ── Video module guard (Step 4) ──────────────────────────────
   if (activeBot === 'image') {
-    // Block send entirely while a transcription job is running
     if (typeof videoState !== 'undefined' && videoState.isTranscribing) return;
-
-    // If video mode is active but NOT transcribing, the transcript is
-    // already in Memory — fall through to the normal send flow below.
-    // Otherwise hand off to the image bot as usual.
     if (typeof videoState === 'undefined' || !videoState.isVideoMode) {
       sendImageMessage();
       return;
     }
   }
-  // ─────────────────────────────────────────────────────────────
 
   if (!AUTH.canSend()) {
     showToast(`❌ Daily token limit reached! (${AUTH.USER_DAILY_TOKEN_LIMIT.toLocaleString()} tokens). Resets at midnight.`, '#ef4444');
@@ -607,7 +609,6 @@ async function sendMessage() {
   } catch (err) {
     hideTyping();
     renderErrorMessage(err.message || 'Unknown error');
-    // Roll back last user message if not file-based
     if (!hasFiles && Memory.messages.length > 0 &&
         Memory.messages[Memory.messages.length - 1].role === 'user') {
       Memory.messages.pop();
@@ -882,7 +883,7 @@ function loadSession(id) {
 }
 
 // =============================================================
-//  DOWNLOAD — asks user: PDF or Markdown
+//  DOWNLOAD
 // =============================================================
 function showDownloadDialog() {
   document.getElementById('sgaDownloadDialog')?.remove();
@@ -900,7 +901,6 @@ function showDownloadDialog() {
                 padding:28px 32px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
       <h2 style="margin:0 0 6px;font-size:16px;color:#fff;">Download Chat</h2>
       <p style="margin:0 0 20px;font-size:12px;color:#9ca3af;">Choose a format to export this conversation</p>
-
       <button id="dlPdf" style="width:100%;padding:14px 16px;margin-bottom:10px;
         background:#1e1e3a;border:1px solid #6366f1;border-radius:10px;
         color:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;">
@@ -910,7 +910,6 @@ function showDownloadDialog() {
           <div style="font-size:11px;color:#9ca3af;">Styled, printable document</div>
         </div>
       </button>
-
       <button id="dlMd" style="width:100%;padding:14px 16px;margin-bottom:20px;
         background:#1e1e3a;border:1px solid #374151;border-radius:10px;
         color:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;">
@@ -920,7 +919,6 @@ function showDownloadDialog() {
           <div style="font-size:11px;color:#9ca3af;">Plain text, easy to edit</div>
         </div>
       </button>
-
       <button id="dlCancel" style="width:100%;padding:10px;background:transparent;
         border:1px solid #374151;border-radius:8px;color:#9ca3af;font-size:13px;cursor:pointer;">
         Cancel
@@ -929,7 +927,6 @@ function showDownloadDialog() {
 
   dialog.addEventListener('click', e => { if (e.target === dialog) dialog.remove(); });
   document.body.appendChild(dialog);
-
   document.getElementById('dlPdf')?.addEventListener('click',    () => { dialog.remove(); downloadChatAsPDF(); });
   document.getElementById('dlMd')?.addEventListener('click',     () => { dialog.remove(); downloadChatAsMD();  });
   document.getElementById('dlCancel')?.addEventListener('click', () => dialog.remove());
@@ -946,31 +943,26 @@ function _exportFormatContent(msg) {
 function downloadChatAsPDF() {
   const msgs = Memory.messages;
   if (!msgs.length) { showToast('No messages to export.', '#ef4444'); return; }
-
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>ShitalGenAI Export</title>
     <style>
-      body      { font-family:'Segoe UI',sans-serif;font-size:13px;color:#1e1e2e;max-width:800px;margin:40px auto;padding:0 24px; }
-      h1        { font-size:18px;color:#6366f1;border-bottom:2px solid #6366f1;padding-bottom:8px;margin-bottom:8px; }
-      .meta     { font-size:11px;color:#6b7280;margin-bottom:28px; }
-      .msg-user { background:#f3f4f6;border-left:4px solid #6366f1;padding:12px 16px;border-radius:6px;margin:14px 0; }
-      .msg-ai   { background:#f9fafb;border-left:4px solid #22c55e;padding:12px 16px;border-radius:6px;margin:14px 0; }
-      .label    { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px; }
-      .lu       { color:#6366f1; } .la { color:#16a34a; }
-      pre,code  { background:#1e1e2e;color:#cdd6f4;padding:10px;border-radius:6px;font-size:12px;
-                  white-space:pre-wrap;word-break:break-word;display:block;margin-top:6px; }
+      body{font-family:'Segoe UI',sans-serif;font-size:13px;color:#1e1e2e;max-width:800px;margin:40px auto;padding:0 24px;}
+      h1{font-size:18px;color:#6366f1;border-bottom:2px solid #6366f1;padding-bottom:8px;margin-bottom:8px;}
+      .meta{font-size:11px;color:#6b7280;margin-bottom:28px;}
+      .msg-user{background:#f3f4f6;border-left:4px solid #6366f1;padding:12px 16px;border-radius:6px;margin:14px 0;}
+      .msg-ai{background:#f9fafb;border-left:4px solid #22c55e;padding:12px 16px;border-radius:6px;margin:14px 0;}
+      .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+      .lu{color:#6366f1;}.la{color:#16a34a;}
+      pre,code{background:#1e1e2e;color:#cdd6f4;padding:10px;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-word;display:block;margin-top:6px;}
     </style></head><body>
     <h1>ShitalGenAI – Chat Export</h1>
     <p class="meta">Exported: ${new Date().toLocaleString()} | Model: ${escHtml(MODELS.find(m => m.id === dom.modelSelect?.value)?.label || 'AI')}</p>`;
-
   msgs.forEach(m => {
     const isUser = m.role === 'user';
     html += `<div class="${isUser ? 'msg-user' : 'msg-ai'}">
       <div class="label ${isUser ? 'lu' : 'la'}">${isUser ? 'You' : 'ShitalGenAI'}</div>
-      <div>${_exportFormatContent(m)}</div>
-    </div>`;
+      <div>${_exportFormatContent(m)}</div></div>`;
   });
-
   html += '</body></html>';
   const win = window.open('', '_blank');
   if (!win) { showToast('Pop-up blocked. Allow pop-ups and try again.', '#ef4444'); return; }
@@ -982,13 +974,11 @@ function downloadChatAsPDF() {
 function downloadChatAsMD() {
   const msgs = Memory.messages;
   if (!msgs.length) { showToast('No messages to export.', '#ef4444'); return; }
-
   let md  = `# ShitalGenAI – ${escHtml(Memory.session.title)}\n`;
   md     += `**Exported:** ${new Date().toLocaleString()}\n\n---\n\n`;
   msgs.forEach(m => {
     md += `## ${m.role === 'user' ? '🧑 You' : '🤖 ShitalGenAI'}\n\n${m.content}\n\n---\n\n`;
   });
-
   const blob = new Blob([md], { type: 'text/markdown' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -1000,7 +990,6 @@ function downloadChatAsMD() {
 
 // =============================================================
 //  BOT SWITCHER
-//  UPDATED: Video module show/hide hooks added (Step 3)
 // =============================================================
 function switchBot(bot) {
   activeBot = bot;
@@ -1009,7 +998,6 @@ function switchBot(bot) {
     image:  'Analyze images · OCR · Debug screenshots',
   };
   if (dom.botDesc) dom.botDesc.innerHTML = descs[bot] || '';
-
   if (bot === 'image') {
     if (dom.codingModes) dom.codingModes.style.display = 'none';
     if (dom.imageModes)  dom.imageModes.style.display  = '';
@@ -1019,7 +1007,7 @@ function switchBot(bot) {
     currentMode = 'image';
     if (dom.modeLabel) dom.modeLabel.innerHTML = 'Bot: <b>Image Vision</b>';
     if (typeof showImageMode === 'function') showImageMode();
-    if (typeof showVideoMode === 'function') showVideoMode();   // ← Step 3
+    if (typeof showVideoMode === 'function') showVideoMode();
     if (dom.userMsg) dom.userMsg.placeholder = 'Ask something about the image, or leave blank for auto-analysis…';
     if (dom.botSelect) { dom.botSelect.style.borderColor = '#c084fc'; dom.botSelect.style.color = '#c084fc'; }
   } else {
@@ -1028,7 +1016,7 @@ function switchBot(bot) {
     if (dom.langSection) dom.langSection.style.display = '';
     if (dom.attachCode)  dom.attachCode.style.display  = '';
     if (typeof hideImageMode === 'function') hideImageMode();
-    if (typeof hideVideoMode === 'function') hideVideoMode();   // ← Step 3
+    if (typeof hideVideoMode === 'function') hideVideoMode();
     currentMode = 'generate';
     setMode('generate');
     if (dom.botSelect) { dom.botSelect.style.borderColor = ''; dom.botSelect.style.color = ''; }
@@ -1036,7 +1024,7 @@ function switchBot(bot) {
 }
 
 // =============================================================
-//  MODE (coding modes only)
+//  MODE
 // =============================================================
 function setMode(mode) {
   if (mode === 'image') return;
@@ -1052,7 +1040,7 @@ function setMode(mode) {
     generate: 'Describe what you want to build or create...',
     debug:    'Paste your code and describe the bug or unexpected behaviour...',
     refactor: 'Paste your code and describe what to improve...',
-    explain:  'Describe the concept, topic, or problem you want explained — no code will be generated...',
+    explain:  'Describe the concept, topic, or problem you want explained...',
     optimize: 'Paste your code and describe the performance concern...',
     test:     'Paste your code and describe what scenarios to test...',
   };
@@ -1066,9 +1054,6 @@ function clearAttachedCode() {
   if (dom.attachCode)    dom.attachCode.classList.remove('active');
 }
 
-// =============================================================
-//  EXPORT  (original MD quick-export kept for backward compat)
-// =============================================================
 function exportSession() { showDownloadDialog(); }
 
 // =============================================================
@@ -1118,10 +1103,7 @@ function bindEvents() {
   });
   dom.closePaste?.addEventListener('click', clearAttachedCode);
   dom.codeInput?.addEventListener('input', () => { attachedCode = dom.codeInput.value; });
-
-  // ✅ FIXED: exportBtn now opens the download dialog (PDF or MD choice)
   dom.exportBtn?.addEventListener('click', showDownloadDialog);
-
   document.querySelectorAll('.mode-btn').forEach(btn =>
     btn.addEventListener('click', () => setMode(btn.dataset.mode))
   );
@@ -1139,9 +1121,7 @@ function bindEvents() {
     AUTH.logout(); AUTH.updateBadge(); showToast('Logged out from admin.', '#6366f1');
   });
   $('signOutBtn')?.addEventListener('click', signOut);
-
   dom.botSelect?.addEventListener('change', () => switchBot(dom.botSelect.value));
-
   document.querySelectorAll('.img-subtab').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.img-subtab').forEach(b => b.classList.remove('active'));
@@ -1150,13 +1130,11 @@ function bindEvents() {
       if (typeof updateImgSubModePlaceholder === 'function') updateImgSubModePlaceholder();
     });
   });
-
   document.getElementById('historyToggle')?.addEventListener('click', toggleHistory);
 }
 
 // =============================================================
-//  INIT + BOOT
-//  UPDATED: initVideoModule() call added (Step 2)
+//  INIT
 // =============================================================
 function initApp() {
   initDom();
@@ -1164,7 +1142,7 @@ function initApp() {
   AUTH.updateBadge();
   bindEvents();
   if (typeof initFileAttach  === 'function') initFileAttach();
-  if (typeof initVideoModule === 'function') initVideoModule();  // ← Step 2
+  if (typeof initVideoModule === 'function') initVideoModule();
 
   const sessions = Memory.sessions;
   if (sessions.length > 0) {
@@ -1190,14 +1168,12 @@ function initApp() {
   }
 
   Memory.updateStats();
-
   historyOpen = true;
   _renderHistoryContent();
   const histList = document.getElementById('historyList');
   if (histList) histList.style.display = 'block';
   const chevron = document.getElementById('historyChevron');
   if (chevron) chevron.style.transform = 'rotate(180deg)';
-
   if (dom.userMsg) dom.userMsg.focus();
 }
 
