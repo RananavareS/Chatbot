@@ -40,14 +40,39 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if path == '/':
             path = '/index.html'
 
-        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path.lstrip('/'))
+        # Build file path
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, path.lstrip('/'))
+
+        # Security check — prevent directory traversal
+        if not os.path.abspath(file_path).startswith(base_dir):
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(b'Forbidden')
+            return
+
         content_types = {
             '.html': 'text/html',
-            '.css': 'text/css',
-            '.js': 'application/javascript',
-            '.ico': 'image/x-icon',
+            '.css':  'text/css',
+            '.js':   'application/javascript',
+            '.ico':  'image/x-icon',
+            '.png':  'image/png',
+            '.jpg':  'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif':  'image/gif',
+            '.svg':  'image/svg+xml',
+            '.json': 'application/json',
+            '.txt':  'text/plain',
+            '.mp4':  'video/mp4',
+            '.webm': 'video/webm',
+            '.mp3':  'audio/mpeg',
+            '.wav':  'audio/wav',
+            '.pdf':  'application/pdf',
+            '.woff': 'font/woff',
+            '.woff2':'font/woff2',
         }
-        ext = os.path.splitext(file_path)[1]
+
+        ext = os.path.splitext(file_path)[1].lower()
         content_type = content_types.get(ext, 'text/plain')
 
         try:
@@ -55,13 +80,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 content = f.read()
             self.send_response(200)
             self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(content)))
             self.send_cors_headers()
             self.end_headers()
             self.wfile.write(content)
         except FileNotFoundError:
             self.send_response(404)
+            self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            self.wfile.write(b'Not found')
+            self.wfile.write(f'File not found: {path}'.encode())
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f'Server error: {str(e)}'.encode())
 
     def do_POST(self):
         if self.path == '/api/chat':
@@ -97,10 +128,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     'https://api.groq.com/openai/v1/chat/completions',
                     data=payload_bytes,
                     headers={
-                        'Content-Type': 'application/json',
+                        'Content-Type':  'application/json',
                         'Authorization': f'Bearer {GROQ_API_KEY}',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Accept': 'application/json',
+                        'User-Agent':    'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Accept':        'application/json',
                     },
                     method='POST'
                 )
@@ -130,9 +161,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 try:
                     err_json = json.loads(error_body)
                     msg = err_json.get('error', {}).get('message', str(e))
-                except:
+                except Exception:
                     msg = str(e)
-                self.wfile.write(json.dumps({'error': {'message': msg}}).encode())
+                self.wfile.write(json.dumps(
+                    {'error': {'message': msg}}
+                ).encode())
 
             except Exception as e:
                 print(f"Server error: {e}")
@@ -140,12 +173,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/json')
                 self.send_cors_headers()
                 self.end_headers()
-                self.wfile.write(json.dumps({'error': {'message': str(e)}}).encode())
+                self.wfile.write(json.dumps(
+                    {'error': {'message': str(e)}}
+                ).encode())
+
         else:
             self.send_response(404)
+            self.send_header('Content-Type', 'text/plain')
             self.end_headers()
+            self.wfile.write(b'Endpoint not found')
+
 
 if __name__ == '__main__':
+    PORT = int(os.environ.get('PORT', PORT))
     print(f"""
   ╔══════════════════════════════════════════╗
   ║   CodeBot — Groq Edition (Free)          ║
@@ -155,6 +195,5 @@ if __name__ == '__main__':
   ║   http://localhost:{PORT}                   ║
   ╚══════════════════════════════════════════╝
     """)
-    PORT = int(os.environ.get('PORT', PORT))
     server = HTTPServer(('0.0.0.0', PORT), ProxyHandler)
     server.serve_forever()
